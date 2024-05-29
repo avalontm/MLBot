@@ -34,35 +34,35 @@ namespace MLBot
 
         public void TrainModel(string folderPath)
         {
-            // Cargar los datos de entrenamiento desde los archivos YAML en la carpeta
+            // Load training data from YAML files in the folder
             IEnumerable<Conversation> trainingData = ConversationLoader.LoadConversationsFromFolder(folderPath);
 
-            // Convertir las categorías a una cadena única separada por comas
-            var categoriesAsString = string.Join(",", trainingData.SelectMany(c => c.categories).Distinct());
+            // Verify that we have at least 2 distinct labels
+            var distinctCategories = trainingData.SelectMany(c => c.categories).Distinct().ToList();
+            if (distinctCategories.Count < 2)
+            {
+                throw new InvalidOperationException("Training data must contain at least two distinct categories.");
+            }
 
-            // Convertir los datos de entrada a un IEnumerable<Input>
+            // Convert input data to IEnumerable<Input>
             var inputData = trainingData
-                .SelectMany(c => c.conversations.SelectMany(conv => conv)) // Combina todas las conversaciones en una sola secuencia
-                .Select(conversation => new Input { Text = conversation, Label = categoriesAsString });
+                .SelectMany(c => c.conversations.SelectMany(conv => conv.Select(conversation => new Input
+                {
+                    Text = conversation,
+                    Label = c.categories.FirstOrDefault() // Assuming each conversation belongs to a single category
+                })));
 
-            // Cargar los datos de entrada en un IDataView
+            // Load input data into an IDataView
             dataView = _mlContext.Data.LoadFromEnumerable(inputData);
 
-            // Definir el pipeline de transformación y entrenamiento
+            // Define the transformation and training pipeline
             var pipeline = _mlContext.Transforms.Text.FeaturizeText("Features", nameof(Input.Text))
                 .Append(_mlContext.Transforms.Conversion.MapValueToKey(nameof(Input.Label)))
                 .Append(_mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy())
                 .Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
 
-            // Crear un objeto Progress para monitorear el progreso del entrenamiento
-            var progressHandler = new Progress<MulticlassClassificationMetrics>(p =>
-            {
-                // Puedes imprimir información de progreso aquí, por ejemplo:
-                Console.WriteLine($"Iteración: {p.MicroAccuracy}, Pérdida: {p.LogLoss}");
-            });
-
-            // Entrenar el modelo
-            Console.WriteLine("Entrenando modelo...");
+            // Train the model
+            Console.WriteLine("Training model...");
             _model = pipeline.Fit(dataView);
         }
 

@@ -14,18 +14,27 @@ namespace MLBot
             var predictionEngine = modelBuilder.CreatePredictionEngine();
             modelBuilder.SaveModel(Path.Combine(Directory.GetCurrentDirectory(), "model.zip"));
 
-            Console.WriteLine($"Empieza a conversar: ");
+            IEnumerable<Conversation> conversations = ConversationLoader.LoadConversationsFromFolder(Path.Combine(Directory.GetCurrentDirectory(), folderPath));
+            var responseGenerator = new ResponseGenerator(conversations);
+
+            // Conversation loop
             while (true)
             {
-                string inputText = Console.ReadLine();
+                Console.Write("User: ");
+                var userInput = Console.ReadLine();
 
-                // Realizar una predicción
-                var input = new Input { Text = inputText };
-                var prediction = predictionEngine.Predict(input);
+                if (string.IsNullOrWhiteSpace(userInput))
+                {
+                    break; // Exit loop if input is empty
+                }
 
-                Console.WriteLine($"Input: {inputText}");
-                Console.WriteLine($"Predicted Label: {prediction.PredictedLabel}");
-                Console.WriteLine($"Probability: {prediction.Probability}");
+                // Predict category
+                var input = new Input { Text = userInput };
+                var output = predictionEngine.Predict(input);
+
+                // Generate and display response
+                var response = responseGenerator.GenerateResponse(output.PredictedLabel);
+                Console.WriteLine($"Bot: {response}");
             }
         }
     }

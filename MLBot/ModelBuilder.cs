@@ -10,24 +10,26 @@ using System.Threading.Tasks;
 
 namespace MLBot
 {
-    public class UserConversation
+    public class InputModel
     {
-        public string? UserInput { get; set; }
-        public string? BotResponse { get; set; }
+        [LoadColumn(0)]
+        public string Label { get; set; }
+
+        [LoadColumn(1)]
+        public string Text { get; set; }
+
+        [LoadColumn(2)]
+        public string Responses { get; set; }
     }
 
-    public class Input
+    public class OutputModel
     {
-        public string Category { get; set; }
-        public string Question { get; set; }
-        public string Answer { get; set; }
-    }
+        [ColumnName("PredictedLabel")]
+        public string PredictedLabel { get; set; }
 
-    public class Output
-    {
-        public string? PredictedLabel { get; set; }
-        public float[]? Score { get; set; }
-        public float Probability { get; set; }
+        [ColumnName("PredictedResponses")]
+        public string PredictedResponses { get; set; }
+        public float[] Score { get; set; }
     }
 
     public class ModelBuilder
@@ -42,33 +44,27 @@ namespace MLBot
             _mlContext = new MLContext();
         }
 
-        public void TrainModel(string folderPath)
+        public void TrainModel(string filePath)
         {
-            // Load training data from YAML files
-            var trainingData = ConversationLoader.LoadConversationsFromFolder(folderPath);
+            // Cargar datos
+            _dataView = _mlContext.Data.LoadFromTextFile<InputModel>(filePath, separatorChar: '\t', hasHeader: true, allowSparse: false);
 
-            // Convert input data to IEnumerable<Input>
-            var inputData = trainingData
-                .SelectMany(group => group.Answers.Select(answer => new Input
-                {
-                    Category = group.Category,
-                    Question = group.Question,
-                    Answer = answer
-                }))
-                .ToList();
+            // Preparar el pipeline de transformación y entrenamiento
+            var pipeline = _mlContext.Transforms.Conversion.MapValueToKey("Label", "Label")
+               .Append(_mlContext.Transforms.Text.FeaturizeText("TitleFeaturized", "Text"))
+               .Append(_mlContext.Transforms.Text.FeaturizeText("ResponsesFeaturized", "Responses"))
+               .Append(_mlContext.Transforms.Concatenate("Features", "TitleFeaturized", "ResponsesFeaturized"))
+               .AppendCacheCheckpoint(_mlContext);
 
-            // Load input data into an IDataView
-            _dataView = _mlContext.Data.LoadFromEnumerable(inputData);
+            var trainer = _mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy("Label", "Features");
 
-            // Define the transformation and training pipeline
-            var pipeline = _mlContext.Transforms.Conversion.MapValueToKey(nameof(Input.Answer))
-                .Append(_mlContext.Transforms.Text.FeaturizeText("Features", nameof(Input.Question)))
-                .Append(_mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy(labelColumnName: nameof(Input.Answer)))
+            var trainingPipeline = pipeline
+                .Append(trainer)
                 .Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
 
-            // Train the model
+            // Entrenar el modelo
             Console.WriteLine("Training model...");
-            _model = pipeline.Fit(_dataView);
+            _model = trainingPipeline.Fit(_dataView);
         }
 
         public void SaveModel(string modelPath)
@@ -82,9 +78,9 @@ namespace MLBot
             _model = _mlContext.Model.Load(modelPath, out modelSchema);
         }
 
-        public PredictionEngine<Input, Output> CreatePredictionEngine()
+        public PredictionEngine<InputModel, OutputModel> CreatePredictionEngine()
         {
-            return _mlContext.Model.CreatePredictionEngine<Input, Output>(_model);
+            return _mlContext.Model.CreatePredictionEngine<InputModel, OutputModel>(_model);
         }
     }
 }

@@ -1,21 +1,30 @@
-﻿using System.Security.Authentication;
+﻿using Microsoft.ML;
+using Newtonsoft.Json;
+using System.Security.Authentication;
 
 namespace MLBot
 {
     internal class Program
     {
         static string folderPath = "data";
+        static PredictionEngine<Input, Output>? predictionEngine;
 
         static void Main(string[] args)
         {
             // Entrenar el modelo
             var modelBuilder = new ModelBuilder();
-            modelBuilder.TrainModel(Path.Combine(Directory.GetCurrentDirectory(), folderPath));
-            var predictionEngine = modelBuilder.CreatePredictionEngine();
-            modelBuilder.SaveModel(Path.Combine(Directory.GetCurrentDirectory(), "model.zip"));
 
-            IEnumerable<Conversation> conversations = ConversationLoader.LoadConversationsFromFolder(Path.Combine(Directory.GetCurrentDirectory(), folderPath));
-            var responseGenerator = new ResponseGenerator(conversations);
+            if (File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "model.zip")))
+            {
+                modelBuilder.LoadModel(Path.Combine(Directory.GetCurrentDirectory(), "model.zip"));
+                predictionEngine = modelBuilder.CreatePredictionEngine();
+            }
+            else
+            {
+                modelBuilder.TrainModel(Path.Combine(Directory.GetCurrentDirectory(), folderPath));
+                predictionEngine = modelBuilder.CreatePredictionEngine();
+                modelBuilder.SaveModel(Path.Combine(Directory.GetCurrentDirectory(), "model.zip"));
+            }
 
             // Conversation loop
             while (true)
@@ -29,12 +38,11 @@ namespace MLBot
                 }
 
                 // Predict category
-                var input = new Input { Text = userInput };
+                var input = new Input { Question = userInput };
                 var output = predictionEngine.Predict(input);
 
-                // Generate and display response
-                var response = responseGenerator.GenerateResponse(output.PredictedLabel);
-                Console.WriteLine($"Bot: {response}");
+                Console.WriteLine($"Bot: {output.PredictedLabel}");
+
             }
         }
     }

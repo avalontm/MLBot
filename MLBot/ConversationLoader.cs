@@ -6,22 +6,23 @@ namespace MLBot
 {
     public class ConversationData
     {
-        public List<string> categories { get; set; } = new List<string>();
-        public List<List<string>> conversations { get; set; } = new List<List<string>>();
+        public List<string>? categories { get; set; }
+        public List<List<string>>? conversations { get; set; }
     }
 
-    public class Conversation
+    public class ConversationItem
     {
-        public string? Text { get; set; }
-        public string? Category { get; set; }
+        public string Category { get; set; }
+        public string Question { get; set; }
+        public List<string> Answers { get; set; }
     }
 
     public static class ConversationLoader
     {
-        public static IEnumerable<Conversation> LoadConversationsFromFolder(string folderPath)
+        public static List<ConversationItem> LoadConversationsFromFolder(string folderPath)
         {
-            var conversations = new List<Conversation>();
-            var deserializer = new Deserializer();
+            var conversationGroups = new List<ConversationItem>();
+            var deserializer = new DeserializerBuilder().Build();
 
             // Get all YAML files in the folder
             var yamlFiles = Directory.GetFiles(folderPath, "*.yml");
@@ -33,22 +34,28 @@ namespace MLBot
                     var yamlText = File.ReadAllText(filePath);
                     var conversationData = deserializer.Deserialize<ConversationData>(yamlText);
 
-                    foreach (var conversation in conversationData.conversations)
+                    foreach (var category in conversationData.categories)
                     {
-                        for (int i = 0; i < conversation.Count; i++)
+                        foreach (var conversation in conversationData.conversations)
                         {
-                            var sentence = conversation[i];
-                            var category = conversationData.categories.FirstOrDefault() ?? "Unknown";
-                            conversations.Add(new Conversation { Text = sentence, Category = category });
+                            var conversationItem = new ConversationItem
+                            {
+                                Category = category,
+                                Question = conversation[0],
+                                Answers = conversation.Skip(1).ToList()
+                            };
+
+                            conversationGroups.Add(conversationItem);
                         }
                     }
-                }catch(Exception ex)
+                }
+                catch (Exception ex)
                 {
                     Console.WriteLine(ex);
                 }
             }
 
-            return conversations;
+            return conversationGroups;
         }
     }
 }
